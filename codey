@@ -1,0 +1,71 @@
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import IsolationForest
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Step 1: Generate Dummy Sales Data
+np.random.seed(42)
+stores = ['Store_A', 'Store_B', 'Store_C']
+products = ['Soap', 'Shampoo', 'Toothpaste', 'Brush', 'Lotion']
+
+def generate_sales_data(n=200):
+    data = []
+    for _ in range(n):
+        store = np.random.choice(stores)
+        product = np.random.choice(products)
+        quantity = np.random.randint(1, 10)
+        price = np.random.uniform(10, 100)
+        returned = np.random.choice([0, 1], p=[0.9, 0.1])  # 10% return chance
+        data.append({
+            'Store': store,
+            'Product': product,
+            'Quantity': quantity,
+            'Price_per_Unit': round(price, 2),
+            'Returned': returned
+        })
+    return pd.DataFrame(data)
+
+df = generate_sales_data()
+
+# Step 2: Calculate Metrics
+df['Total_Sales'] = df['Quantity'] * df['Price_per_Unit']
+df['Loss'] = df.apply(lambda row: row['Total_Sales'] if row['Returned'] == 1 else 0, axis=1)
+df['Profit'] = df['Total_Sales'] - df['Loss']
+
+# Step 3: Anomaly Detection using Isolation Forest
+features = df[['Quantity', 'Price_per_Unit', 'Total_Sales', 'Loss', 'Profit']]
+
+# Check for missing values
+if features.isnull().values.any():
+    print("Warning: Missing values detected. Filling with 0.")
+    features = features.fillna(0)
+
+model = IsolationForest(contamination=0.05, random_state=42)
+df['Anomaly'] = model.fit_predict(features)
+df['Anomaly'] = df['Anomaly'].apply(lambda x: 'Yes' if x == -1 else 'No')
+
+# Step 4: Store-wise Summary
+summary = df.groupby('Store').agg({
+    'Total_Sales': 'sum',
+    'Loss': 'sum',
+    'Profit': 'sum',
+    'Anomaly': lambda x: (x == 'Yes').sum()
+}).rename(columns={'Anomaly': 'Anomalies_Detected'}).reset_index()
+
+# Step 5: Display Summary
+print("\n📊 Store-wise Performance Summary with AI Anomaly Detection:\n")
+print(summary.round(2))
+
+# Step 6: Show Potential Anomalies
+print("\n🚨 Potential Anomalies Detected:\n")
+print(df[df['Anomaly'] == 'Yes'][['Store', 'Product', 'Quantity', 'Price_per_Unit', 'Total_Sales', 'Loss', 'Profit', 'Anomaly']])
+
+# Step 7: Visualization
+plt.figure(figsize=(10, 6))
+sns.barplot(data=summary, x='Store', y='Profit', palette='viridis')
+plt.title("Profit by Store")
+plt.ylabel("Profit (₹)")
+plt.xlabel("Store")
+plt.tight_layout()
+plt.show()
